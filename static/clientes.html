@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+  <meta charset="UTF-8" />
+  <title>CRUD Clientes</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+  <style>
+    body {
+      padding: 2em;
+      background-color: #f8f9fa;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+    .card {
+      margin-bottom: 20px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+      border: none;
+      border-radius: 10px;
+    }
+    .card-header {
+      border-radius: 10px 10px 0 0 !important;
+    }
+    table {
+      margin-top: 1em;
+      width: 100%;
+    }
+    .btn {
+      margin-right: 5px;
+      margin-bottom: 5px;
+      border-radius: 6px;
+      font-weight: 500;
+    }
+    .action-buttons {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 15px;
+    }
+    .table-actions {
+      display: flex;
+      gap: 5px;
+    }
+    .form-control {
+      border-radius: 6px;
+      padding: 10px;
+    }
+    h1, h5 {
+      color: #2c3e50;
+    }
+    .alert {
+      border-radius: 8px;
+    }
+    .debug-panel {
+      position: fixed;
+      top: 10px;
+      right: 10px;
+      background: rgba(0,0,0,0.8);
+      color: white;
+      padding: 10px;
+      border-radius: 5px;
+      font-size: 12px;
+      z-index: 1000;
+      max-width: 300px;
+    }
+  </style>
+</head>
+
+<body class="container">
+  <!-- Painel de Debug -->
+  <div class="debug-panel">
+    <strong>Debug Clientes:</strong><br>
+    <div id="debugInfo">Carregando...</div>
+  </div>
+
+  <div class="card">
+    <div class="card-header bg-primary text-white">
+      <h1 class="mb-0"><i class="fas fa-users me-2"></i>Gerenciamento de Clientes</h1>
+    </div>
+    <div class="card-body">
+      <div class="row">
+        <div class="col-md-6">
+          <div class="mb-3">
+            <label for="txtId" class="form-label">ID do Cliente</label>
+            <input type="number" id="txtId" class="form-control mb-2" placeholder="Digite o ID do cliente" min="1" />
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="mb-3">
+            <label for="txtNomeCliente" class="form-label">Nome do Cliente</label>
+            <input type="text" id="txtNomeCliente" class="form-control mb-2" placeholder="Nome completo" />
+          </div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="col-md-6">
+          <div class="mb-3">
+            <label for="txtEmailCliente" class="form-label">Email do Cliente</label>
+            <input type="email" id="txtEmailCliente" class="form-control mb-2" placeholder="email@exemplo.com" />
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="mb-3">
+            <label class="form-label">Ações</label>
+            <div class="action-buttons" id="divBotoes"></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="divResposta" class="alert d-none"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header bg-light">
+      <h5 class="mb-0"><i class="fas fa-list me-2"></i>Lista de Clientes</h5>
+    </div>
+    <div class="card-body">
+      <div id="divTabela" class="table-responsive">
+        <p class="text-center text-muted">Clique em "Listar Clientes" para carregar os dados</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ========== SEÇÃO DE AUTENTICAÇÃO E TOKEN ==========
+    const token = localStorage.getItem("token");
+    const debugInfo = document.getElementById("debugInfo");
+    
+    if (!token) {
+      console.warn("❌ Token não encontrado. Redirecionando para login...");
+      alert("Sessão expirada. Faça login novamente.");
+      window.location.href = "Login.html";
+    }
+
+    // ========== VARIÁVEIS GLOBAIS E REFERÊNCIAS DOM ==========
+    let API_DATA;
+    const txtId = document.getElementById("txtId");
+    const txtNomeCliente = document.getElementById("txtNomeCliente");
+    const txtEmailCliente = document.getElementById("txtEmailCliente");
+    const divBotoes = document.getElementById("divBotoes");
+    const divResposta = document.getElementById("divResposta");
+    const divTabela = document.getElementById("divTabela");
+
+    // ========== FUNÇÃO PARA FAZER REQUISIÇÕES ==========
+    async function makeRequest(url, method, data = null) {
+      console.log(`🔵 Fazendo requisição ${method} para: ${url}`);
+      if (data) console.log("📦 Dados enviados:", data);
+
+      const config = {
+        method: method,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      };
+
+      if (data) {
+        config.body = JSON.stringify(data);
+      }
+
+      try {
+        const response = await fetch(url, config);
+        const result = await response.json();
+        
+        console.log(`✅ Resposta ${response.status}:`, result);
+        
+        if (!response.ok) {
+          throw new Error(result.message || `Erro ${response.status}`);
+        }
+        
+        return result;
+      } catch (error) {
+        console.error(`❌ Erro na requisição ${method}:`, error);
+        throw error;
+      }
+    }
+
+    // ========== CRIAÇÃO DE BOTÕES ==========
+    function createButton(text, className, icon = "") {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.innerHTML = icon ? `<i class="${icon} me-1"></i> ${text}` : text;
+      btn.className = `btn ${className}`;
+      return btn;
+    }
+
+    // Botão Buscar por ID
+    const btnBuscar = createButton("Buscar por ID", "btn-info", "fas fa-search");
+    btnBuscar.onclick = async function() {
+      const id = txtId.value.trim();
+      if (!id) {
+        showResponse("Digite um ID para buscar", "warning");
+        return;
+      }
+
+      try {
+        showResponse("Buscando cliente...", "info");
+        const resposta = await makeRequest(`http://localhost:8080/api/v1/clientes/${id}`, "GET");
+        
+        if (resposta && resposta.success) {
+          showResponse("Cliente encontrado com sucesso", "success");
+          renderSingleCliente(resposta);
+        } else {
+          showResponse("Cliente não encontrado", "warning");
+          clearForm();
+        }
+      } catch (error) {
+        console.error("Erro ao buscar cliente:", error);
+        if (error.message.includes("Token") || error.message.includes("401")) {
+          handleTokenError();
+        } else {
+          showResponse("Erro ao buscar cliente: " + error.message, "danger");
+        }
+      }
+    };
+    divBotoes.appendChild(btnBuscar);
+
+    // Botão Listar
+    const btnListar = createButton("Listar Clientes", "btn-primary", "fas fa-list");
+    btnListar.onclick = async function() {
+      await listAll();
+    };
+    divBotoes.appendChild(btnListar);
+
+    // Botão Criar
+    const btnCriar = createButton("Criar Cliente", "btn-success", "fas fa-plus");
+    btnCriar.onclick = async function() {
+      const nome = txtNomeCliente.value.trim();
+      const email = txtEmailCliente.value.trim();
+
+      if (!nome || !email) {
+        showResponse("Nome e email são obrigatórios", "warning");
+        return;
+      }
+
+      if (!validateEmail(email)) {
+        showResponse("Digite um email válido", "warning");
+        return;
+      }
+
+      // SUA ESTRUTURA DE DADOS
+      const clienteData = {
+        cliente: {
+          nomeCliente: nome,
+          emailCliente: email
+        }
+      };
+
+      try {
+        showResponse("Criando cliente...", "info");
+        const resposta = await makeRequest("http://localhost:8080/api/v1/clientes", "POST", clienteData);
+        showResponse("Cliente criado com sucesso! ID: " + resposta.data, "success");
+        await listAll();
+        clearForm();
+      } catch (error) {
+        console.error("Erro ao criar cliente:", error);
+        if (error.message.includes("Token") || error.message.includes("401")) {
+          handleTokenError();
+        } else {
+          showResponse("Erro ao criar cliente: " + error.message, "danger");
+        }
+      }
+    };
+    divBotoes.appendChild(btnCriar);
+
+    // Botão Atualizar
+    const btnAtualizar = createButton("Atualizar Cliente", "btn-warning", "fas fa-edit");
+    btnAtualizar.onclick = async function() {
+      const id = txtId.value.trim();
+      const nome = txtNomeCliente.value.trim();
+      const email = txtEmailCliente.value.trim();
+      
+      if (!id) {
+        showResponse("Digite um ID para atualizar", "warning");
+        return;
+      }
+
+      if (!nome || !email) {
+        showResponse("Nome e email são obrigatórios", "warning");
+        return;
+      }
+
+      if (!validateEmail(email)) {
+        showResponse("Digite um email válido", "warning");
+        return;
+      }
+
+      // SUA ESTRUTURA DE DADOS
+      const clienteData = {
+        cliente: {
+          idCliente: parseInt(id),
+          nomeCliente: nome,
+          emailCliente: email
+        }
+      };
+      
+      try {
+        showResponse("Atualizando cliente...", "info");
+        const resposta = await makeRequest(`http://localhost:8080/api/v1/clientes/${id}`, "PUT", clienteData);
+        showResponse("Cliente atualizado com sucesso!", "success");
+        await listAll();
+      } catch (error) {
+        console.error("Erro ao atualizar cliente:", error);
+        if (error.message.includes("Token") || error.message.includes("401")) {
+          handleTokenError();
+        } else {
+          showResponse("Erro ao atualizar cliente: " + error.message, "danger");
+        }
+      }
+    };
+    divBotoes.appendChild(btnAtualizar);
+
+    // Botão Excluir
+    const btnExcluir = createButton("Excluir Cliente", "btn-danger", "fas fa-trash");
+    btnExcluir.onclick = async function() {
+      const id = txtId.value.trim();
+      if (!id) {
+        showResponse("Digite um ID para excluir", "warning");
+        return;
+      }
+
+      if (confirm(`Tem certeza que deseja excluir o cliente com ID ${id}?`)) {
+        try {
+          showResponse("Excluindo cliente...", "info");
+          const resposta = await makeRequest(`http://localhost:8080/api/v1/clientes/${id}`, "DELETE");
+          showResponse("Cliente excluído com sucesso!", "success");
+          await listAll();
+          clearForm();
+        } catch (error) {
+          console.error("Erro ao excluir cliente:", error);
+          if (error.message.includes("Token") || error.message.includes("401")) {
+            handleTokenError();
+          } else {
+            showResponse("Erro ao excluir cliente: " + error.message, "danger");
+          }
+        }
+      }
+    };
+    divBotoes.appendChild(btnExcluir);
+
+    // Botão Limpar
+    const btnLimpar = createButton("Limpar Campos", "btn-secondary", "fas fa-broom");
+    btnLimpar.onclick = function() {
+      clearForm();
+      showResponse("Campos limpos", "info");
+    };
+    divBotoes.appendChild(btnLimpar);
+
+    // ========== FUNÇÕES PRINCIPAIS ==========
+    async function listAll() {
+      try {
+        console.log("🟡 Iniciando listAll()...");
+        showResponse("Carregando clientes...", "info");
+        
+        const resposta = await makeRequest("http://localhost:8080/api/v1/clientes", "GET");
+        
+        console.log("📊 Resposta completa da API:", resposta);
+        
+        if (resposta && resposta.success) {
+          console.log("✅ Sucesso ao carregar clientes");
+          console.log("📋 Estrutura dos dados:", resposta.data);
+          renderTable(resposta);
+          showResponse("Clientes carregados com sucesso", "success");
+        } else {
+          console.warn("⚠️ Resposta sem sucesso:", resposta);
+          showResponse("Erro ao carregar clientes", "danger");
+        }
+      } catch (error) {
+        console.error("❌ Erro ao carregar clientes:", error);
+        if (error.message.includes("Token") || error.message.includes("401")) {
+          handleTokenError();
+        } else {
+          showResponse("Erro ao carregar clientes: " + error.message, "danger");
+        }
+      }
+    }
+
+    function renderSingleCliente(dados) {
+        console.log("🟡 Renderizando cliente único:", dados);
+        divTabela.innerHTML = "";
+
+        if (!dados || !dados.data) {
+            console.warn("⚠️ Dados inválidos para renderização única");
+            divTabela.innerHTML = '<div class="alert alert-info">Cliente não encontrado</div>';
+            return;
+        }
+
+        // CORREÇÃO: Verificar diferentes estruturas possíveis para cliente único
+        let cliente = null;
+        
+        // Estrutura 1: dados.data.clientes (array)
+        if (dados.data.clientes && Array.isArray(dados.data.clientes) && dados.data.clientes.length > 0) {
+            cliente = dados.data.clientes[0];
+            console.log("✅ Cliente encontrado em data.clientes[0]:", cliente);
+        }
+        // Estrutura 2: dados.data.clientes (objeto direto)
+        else if (dados.data.clientes && typeof dados.data.clientes === 'object') {
+            cliente = dados.data.clientes;
+            console.log("✅ Cliente encontrado em data.clientes:", cliente);
+        }
+        // Estrutura 3: dados.data (é o próprio cliente)
+        else if (dados.data.idCliente || dados.data.idclientes || dados.data.id) {
+            cliente = dados.data;
+            console.log("✅ Cliente encontrado em data:", cliente);
+        }
+        // Estrutura 4: dados é o próprio cliente
+        else if (dados.idCliente || dados.idclientes || dados.id) {
+            cliente = dados;
+            console.log("✅ Cliente encontrado em dados:", cliente);
+        }
+        else {
+            console.warn("⚠️ Estrutura de cliente único não reconhecida:", dados);
+            divTabela.innerHTML = '<div class="alert alert-warning">Estrutura de dados não reconhecida</div>';
+            return;
+        }
+
+        if (!cliente) {
+            console.log("ℹ️ Cliente não encontrado na busca");
+            divTabela.innerHTML = '<div class="alert alert-info">Cliente não encontrado</div>';
+            return;
+        }
+
+        console.log("👤 Cliente a ser renderizado:", cliente);
+        renderClienteTable([cliente]); // Envia como array para a função de renderização
+    }
+
+
+    function renderTable(dados) {
+      console.log("🟡 Iniciando renderTable()...");
+      console.log("📦 Dados recebidos:", dados);
+      
+      divTabela.innerHTML = "";
+
+      // Verificar diferentes estruturas possíveis
+      let clientes = [];
+      
+      if (dados && dados.data && dados.data.clientes) {
+        clientes = dados.data.clientes;
+        console.log("✅ Clientes encontrados na estrutura data.clientes:", clientes);
+      } else if (dados && dados.clientes) {
+        clientes = dados.clientes;
+        console.log("✅ Clientes encontrados na estrutura clientes:", clientes);
+      } else if (dados && Array.isArray(dados)) {
+        clientes = dados;
+        console.log("✅ Clientes encontrados como array direto:", clientes);
+      } else {
+        console.warn("⚠️ Estrutura de dados não reconhecida:", dados);
+        divTabela.innerHTML = '<div class="alert alert-warning">Estrutura de dados não reconhecida</div>';
+        return;
+      }
+
+      if (!clientes || clientes.length === 0) {
+        console.log("ℹ️ Nenhum cliente encontrado");
+        divTabela.innerHTML = '<div class="alert alert-info">Nenhum cliente encontrado</div>';
+        return;
+      }
+
+      console.log(`🎯 Renderizando ${clientes.length} cliente(s)`);
+      renderClienteTable(clientes);
+    }
+
+    function renderClienteTable(clientes) {
+      console.log("🟡 Criando tabela para clientes:", clientes);
+      
+      const table = document.createElement("table");
+      table.className = "table table-bordered table-striped table-hover";
+
+      // Cabeçalho
+      const thead = document.createElement("thead");
+      thead.className = "table-dark";
+      const trHead = document.createElement("tr");
+      ["ID", "Nome", "Email", "Ações"].forEach(text => {
+        const th = document.createElement("th");
+        th.textContent = text;
+        trHead.appendChild(th);
+      });
+      thead.appendChild(trHead);
+      table.appendChild(thead);
+
+      // Corpo da tabela
+      const tbody = document.createElement("tbody");
+      
+      clientes.forEach((cliente, index) => {
+        console.log(`📝 Processando cliente ${index + 1}:`, cliente);
+        
+        const tr = document.createElement("tr");
+
+        // ID - tentar diferentes propriedades
+        const tdId = document.createElement("td");
+        const id = cliente.idCliente || cliente.idclientes || cliente.id;
+        tdId.textContent = id || 'N/A';
+        console.log(`  ID: ${id}`);
+        tr.appendChild(tdId);
+
+        // Nome - tentar diferentes propriedades
+        const tdNome = document.createElement("td");
+        const nome = cliente.nomeCliente || cliente.nome_cliente || cliente.nome;
+        tdNome.textContent = nome || 'N/A';
+        console.log(`  Nome: ${nome}`);
+        tr.appendChild(tdNome);
+
+        // Email - tentar diferentes propriedades
+        const tdEmail = document.createElement("td");
+        const email = cliente.emailCliente || cliente.email_cliente || cliente.email;
+        tdEmail.textContent = email || 'N/A';
+        console.log(`  Email: ${email}`);
+        tr.appendChild(tdEmail);
+
+        // Ações
+        const tdAcoes = document.createElement("td");
+        tdAcoes.className = "table-actions";
+
+        const btnSel = createButton("Selecionar", "btn-sm btn-info", "fas fa-edit");
+        btnSel.onclick = function() {
+          console.log("🎯 Selecionando cliente:", cliente);
+          txtId.value = id;
+          txtNomeCliente.value = nome;
+          txtEmailCliente.value = email;
+          showResponse("Cliente selecionado. Agora você pode atualizar ou excluir.", "info");
+        };
+        tdAcoes.appendChild(btnSel);
+
+        tr.appendChild(tdAcoes);
+        tbody.appendChild(tr);
+      });
+
+      table.appendChild(tbody);
+      divTabela.appendChild(table);
+      
+      console.log("✅ Tabela renderizada com sucesso");
+      updateDebugInfo(`Clientes: ${clientes.length}`);
+    }
+
+    function validateEmail(email) {
+      const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      return re.test(email);
+    }
+
+    function showResponse(message, type) {
+      console.log(`💬 Mensagem: ${message} (${type})`);
+      if (message) {
+        divResposta.textContent = message;
+        divResposta.className = `alert alert-${type}`;
+        divResposta.classList.remove("d-none");
+        
+        if (type === "success") {
+          setTimeout(() => {
+            divResposta.classList.add("d-none");
+          }, 5000);
+        }
+      } else {
+        divResposta.className = "d-none";
+      }
+    }
+
+    function clearForm() {
+      txtId.value = "";
+      txtNomeCliente.value = "";
+      txtEmailCliente.value = "";
+    }
+
+    function handleTokenError() {
+      console.error("❌ Erro de autenticação. Limpando dados e redirecionando...");
+      localStorage.removeItem("token");
+      localStorage.removeItem("userData");
+      alert("Sessão expirada. Faça login novamente.");
+      window.location.href = "Login.html";
+    }
+
+    function updateDebugInfo(message) {
+      debugInfo.innerHTML = message;
+    }
+
+    // ========== INICIALIZAÇÃO ==========
+    console.log("🚀 Inicializando página de Clientes...");
+    showResponse("Digite um ID para buscar ou preencha os campos para criar um novo cliente", "info");
+    updateDebugInfo("Pronto para usar");
+    
+    document.addEventListener("DOMContentLoaded", function() {
+      console.log("📄 DOM carregado, iniciando listAll()...");
+      listAll();
+    });
+
+    // Adicionar listener para tecla Enter no campo ID
+    txtId.addEventListener("keypress", function(e) {
+      if (e.key === "Enter") {
+        btnBuscar.click();
+      }
+    });
+  </script>
+</body>
+</html>

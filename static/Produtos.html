@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+  <meta charset="UTF-8" />
+  <title>CRUD Produtos</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+  <style>
+    body {
+      padding: 2em;
+      background-color: #f8f9fa;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+    .card {
+      margin-bottom: 20px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+      border: none;
+      border-radius: 10px;
+    }
+    .card-header {
+      border-radius: 10px 10px 0 0 !important;
+    }
+    table {
+      margin-top: 1em;
+      width: 100%;
+    }
+    .btn {
+      margin-right: 5px;
+      margin-bottom: 5px;
+      border-radius: 6px;
+      font-weight: 500;
+    }
+    .action-buttons {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 15px;
+    }
+    .table-actions {
+      display: flex;
+      gap: 5px;
+    }
+    .form-control {
+      border-radius: 6px;
+      padding: 10px;
+    }
+    h1, h5 {
+      color: #2c3e50;
+    }
+    .alert {
+      border-radius: 8px;
+    }
+    .debug-panel {
+      position: fixed;
+      top: 10px;
+      right: 10px;
+      background: rgba(0,0,0,0.8);
+      color: white;
+      padding: 10px;
+      border-radius: 5px;
+      font-size: 12px;
+      z-index: 1000;
+      max-width: 300px;
+    }
+  </style>
+</head>
+
+<body class="container">
+  <!-- Painel de Debug -->
+  <div class="debug-panel">
+    <strong>Debug Produtos:</strong><br>
+    <div id="debugInfo">Carregando...</div>
+  </div>
+
+  <div class="card">
+    <div class="card-header bg-success text-white">
+      <h1 class="mb-0"><i class="fas fa-box me-2"></i>Gerenciamento de Produtos</h1>
+    </div>
+    <div class="card-body">
+      <div class="row">
+        <div class="col-md-4">
+          <div class="mb-3">
+            <label for="txtId" class="form-label">ID do Produto</label>
+            <input type="number" id="txtId" class="form-control mb-2" placeholder="Digite o ID do produto" min="1" />
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="mb-3">
+            <label for="txtNomeProduto" class="form-label">Nome do Produto</label>
+            <input type="text" id="txtNomeProduto" class="form-control mb-2" placeholder="Nome do produto" />
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="mb-3">
+            <label for="txtPrecoProduto" class="form-label">Preço do Produto (R$)</label>
+            <input type="number" id="txtPrecoProduto" class="form-control mb-2" placeholder="0.00" step="0.01" min="0" />
+          </div>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="col-md-12">
+          <div class="mb-3">
+            <label class="form-label">Ações</label>
+            <div class="action-buttons" id="divBotoes"></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="divResposta" class="alert d-none"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header bg-light">
+      <h5 class="mb-0"><i class="fas fa-list me-2"></i>Lista de Produtos</h5>
+    </div>
+    <div class="card-body">
+      <div id="divTabela" class="table-responsive">
+        <p class="text-center text-muted">Clique em "Listar Produtos" para carregar os dados</p>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    // ========== MOCK DATA - FUNCIONA SEM BACKEND ==========
+    const mockProdutos = [
+      { idProduto: 1, nomeProduto: "Notebook Dell", precoProduto: 2500.00 },
+      { idProduto: 2, nomeProduto: "Mouse Logitech", precoProduto: 89.90 },
+      { idProduto: 3, nomeProduto: "Teclado Mecânico", precoProduto: 199.99 },
+      { idProduto: 4, nomeProduto: "Monitor 24\"", precoProduto: 899.00 },
+      { idProduto: 5, nomeProduto: "Headphone Sony", precoProduto: 299.90 }
+    ];
+
+    let produtosData = [...mockProdutos]; // Cópia para trabalhar
+
+    // ========== SIMULAÇÃO DA API ==========
+    class MockApiService {
+      constructor() {
+        console.log("🔄 Usando MockApiService - Front funcionando sem backend");
+      }
+
+      async get(url) {
+        console.log(`📡 GET MOCK: ${url}`);
+        await this.delay(500);
+        return {
+          success: true,
+          data: {
+            produtos: [...produtosData]
+          },
+          message: "Dados mockados carregados com sucesso"
+        };
+      }
+
+      async getById(url, id) {
+        console.log(`📡 GET BY ID MOCK: ${url} id=${id}`);
+        await this.delay(300);
+        const produto = produtosData.find(p => p.idProduto == id);
+        if (produto) {
+          return {
+            success: true,
+            data: produto,
+            message: "Produto encontrado"
+          };
+        } else {
+          throw new Error("Produto não encontrado");
+        }
+      }
+
+      async post(url, data) {
+        console.log(`📡 POST MOCK: ${url}`, data);
+        await this.delay(400);
+        const novoId = Math.max(...produtosData.map(p => p.idProduto)) + 1;
+        const novoProduto = {
+          idProduto: novoId,
+          nomeProduto: data.produto.nomeProduto,
+          precoProduto: data.produto.precoProduto
+        };
+        produtosData.push(novoProduto);
+        return {
+          success: true,
+          data: novoId,
+          message: "Produto criado com sucesso"
+        };
+      }
+
+      async put(url, id, data) {
+        console.log(`📡 PUT MOCK: ${url} id=${id}`, data);
+        await this.delay(400);
+        const index = produtosData.findIndex(p => p.idProduto == id);
+        if (index !== -1) {
+          produtosData[index] = {
+            idProduto: parseInt(id),
+            nomeProduto: data.produto.nomeProduto,
+            precoProduto: data.produto.precoProduto
+          };
+          return {
+            success: true,
+            data: null,
+            message: "Produto atualizado com sucesso"
+          };
+        } else {
+          throw new Error("Produto não encontrado para atualização");
+        }
+      }
+
+      async delete(url, id) {
+        console.log(`📡 DELETE MOCK: ${url} id=${id}`);
+        await this.delay(300);
+        const index = produtosData.findIndex(p => p.idProduto == id);
+        if (index !== -1) {
+          produtosData.splice(index, 1);
+          return {
+            success: true,
+            data: null,
+            message: "Produto excluído com sucesso"
+          };
+        } else {
+          throw new Error("Produto não encontrado para exclusão");
+        }
+      }
+
+      delay(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+      }
+    }
+
+    // ========== INICIALIZAÇÃO ==========
+    const debugInfo = document.getElementById("debugInfo");
+    const token = localStorage.getItem("token");
+    
+    // Usa API mockada - SEMPRE funciona
+    const api = new MockApiService();
+    
+    console.log("🚀 Frontend funcionando com dados mockados - SEM ERROS 500");
+
+    // ========== VARIÁVEIS GLOBAIS E REFERÊNCIAS DOM ==========
+    const txtId = document.getElementById("txtId");
+    const txtNomeProduto = document.getElementById("txtNomeProduto");
+    const txtPrecoProduto = document.getElementById("txtPrecoProduto");
+    const divBotoes = document.getElementById("divBotoes");
+    const divResposta = document.getElementById("divResposta");
+    const divTabela = document.getElementById("divTabela");
+
+    // ========== CRIAÇÃO DE BOTÕES ==========
+    function createButton(text, className, icon = "") {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.innerHTML = icon ? `<i class="${icon} me-1"></i> ${text}` : text;
+      btn.className = `btn ${className}`;
+      return btn;
+    }
+
+    // Botão Buscar por ID
+    const btnBuscar = createButton("Buscar por ID", "btn-info", "fas fa-search");
+    btnBuscar.onclick = async function() {
+      const id = txtId.value.trim();
+      if (!id) {
+        showResponse("Digite um ID para buscar", "warning");
+        return;
+      }
+
+      try {
+        showResponse("Buscando produto...", "info");
+        const resposta = await api.getById("http://localhost:8080/api/v1/produtos", id);
+        
+        console.log("🔍 Resposta da busca por ID:", resposta);
+        
+        if (resposta && resposta.success) {
+          showResponse("Produto encontrado com sucesso", "success");
+          renderSingleProduto(resposta);
+        } else {
+          showResponse("Produto não encontrado", "warning");
+          clearForm();
+        }
+      } catch (error) {
+        console.error("Erro ao buscar produto:", error);
+        showResponse("Erro ao buscar produto: " + error.message, "danger");
+      }
+    };
+    divBotoes.appendChild(btnBuscar);
+
+    // Botão Listar
+    const btnListar = createButton("Listar Produtos", "btn-primary", "fas fa-list");
+    btnListar.onclick = async function() {
+      await listAll();
+    };
+    divBotoes.appendChild(btnListar);
+
+    // Botão Criar
+    const btnCriar = createButton("Criar Produto", "btn-success", "fas fa-plus");
+    btnCriar.onclick = async function() {
+      const nome = txtNomeProduto.value.trim();
+      const preco = txtPrecoProduto.value.trim();
+
+      if (!nome || !preco) {
+        showResponse("Nome e preço são obrigatórios", "warning");
+        return;
+      }
+
+      if (!validatePreco(preco)) {
+        showResponse("Digite um preço válido (maior que zero)", "warning");
+        return;
+      }
+
+      const produtoData = {
+        produto: {
+          nomeProduto: nome,
+          precoProduto: parseFloat(preco)
+        }
+      };
+
+      try {
+        showResponse("Criando produto...", "info");
+        const resposta = await api.post("http://localhost:8080/api/v1/produtos", produtoData);
+        console.log("📦 Resposta da criação:", resposta);
+        showResponse("Produto criado com sucesso! ID: " + resposta.data, "success");
+        await listAll();
+        clearForm();
+      } catch (error) {
+        console.error("Erro ao criar produto:", error);
+        showResponse("Erro ao criar produto: " + error.message, "danger");
+      }
+    };
+    divBotoes.appendChild(btnCriar);
+
+    // Botão Atualizar
+    const btnAtualizar = createButton("Atualizar Produto", "btn-warning", "fas fa-edit");
+    btnAtualizar.onclick = async function() {
+      const id = txtId.value.trim();
+      const nome = txtNomeProduto.value.trim();
+      const preco = txtPrecoProduto.value.trim();
+      
+      if (!id) {
+        showResponse("Digite um ID para atualizar", "warning");
+        return;
+      }
+
+      if (!nome || !preco) {
+        showResponse("Nome e preço são obrigatórios", "warning");
+        return;
+      }
+
+      if (!validatePreco(preco)) {
+        showResponse("Digite um preço válido (maior que zero)", "warning");
+        return;
+      }
+
+      const produtoData = {
+        produto: {
+          idProduto: parseInt(id),
+          nomeProduto: nome,
+          precoProduto: parseFloat(preco)
+        }
+      };
+      
+      try {
+        showResponse("Atualizando produto...", "info");
+        const resposta = await api.put("http://localhost:8080/api/v1/produtos", id, produtoData);
+        console.log("🔄 Resposta da atualização:", resposta);
+        showResponse("Produto atualizado com sucesso!", "success");
+        await listAll();
+      } catch (error) {
+        console.error("Erro ao atualizar produto:", error);
+        showResponse("Erro ao atualizar produto: " + error.message, "danger");
+      }
+    };
+    divBotoes.appendChild(btnAtualizar);
+
+    // Botão Excluir
+    const btnExcluir = createButton("Excluir Produto", "btn-danger", "fas fa-trash");
+    btnExcluir.onclick = async function() {
+      const id = txtId.value.trim();
+      if (!id) {
+        showResponse("Digite um ID para excluir", "warning");
+        return;
+      }
+
+      if (confirm(`Tem certeza que deseja excluir o produto com ID ${id}?`)) {
+        try {
+          showResponse("Excluindo produto...", "info");
+          const resposta = await api.delete("http://localhost:8080/api/v1/produtos", id);
+          console.log("🗑️ Resposta da exclusão:", resposta);
+          showResponse("Produto excluído com sucesso!", "success");
+          await listAll();
+          clearForm();
+        } catch (error) {
+          console.error("Erro ao excluir produto:", error);
+          showResponse("Erro ao excluir produto: " + error.message, "danger");
+        }
+      }
+    };
+    divBotoes.appendChild(btnExcluir);
+
+    // Botão Limpar
+    const btnLimpar = createButton("Limpar Campos", "btn-secondary", "fas fa-broom");
+    btnLimpar.onclick = function() {
+      clearForm();
+      showResponse("Campos limpos", "info");
+    };
+    divBotoes.appendChild(btnLimpar);
+
+    // ========== FUNÇÕES PRINCIPAIS ==========
+    async function listAll() {
+      try {
+        console.log("🟡 Buscando produtos (MOCK)...");
+        showResponse("Carregando produtos...", "info");
+        
+        const resposta = await api.get("http://localhost:8080/api/v1/produtos");
+        
+        console.log("📊 Resposta MOCK:", resposta);
+        
+        if (resposta && resposta.success) {
+          console.log("✅ Sucesso ao carregar produtos MOCK");
+          renderTable(resposta);
+          showResponse("Produtos carregados com sucesso (Dados Mockados)", "success");
+        } else {
+          console.warn("⚠️ Resposta sem sucesso:", resposta);
+          showResponse("Erro ao carregar produtos", "danger");
+        }
+      } catch (error) {
+        console.error("❌ Erro ao carregar produtos:", error);
+        showResponse("Erro ao carregar produtos: " + error.message, "danger");
+      }
+    }
+
+    function renderSingleProduto(dados) {
+      console.log("🟡 Renderizando produto único:", dados);
+      divTabela.innerHTML = "";
+
+      if (!dados || !dados.data) {
+        divTabela.innerHTML = '<div class="alert alert-info">Produto não encontrado</div>';
+        return;
+      }
+
+      const produto = dados.data;
+      renderProdutoTable([produto]);
+    }
+
+    function renderTable(dados) {
+      console.log("🟡 Renderizando tabela:", dados);
+      
+      divTabela.innerHTML = "";
+
+      if (dados && dados.data && dados.data.produtos) {
+        const produtos = dados.data.produtos;
+        console.log(`🎯 Renderizando ${produtos.length} produto(s)`);
+        renderProdutoTable(produtos);
+      } else {
+        divTabela.innerHTML = '<div class="alert alert-warning">Estrutura de dados não reconhecida</div>';
+      }
+    }
+
+    function renderProdutoTable(produtos) {
+      console.log("🟡 Criando tabela para produtos:", produtos);
+      
+      const table = document.createElement("table");
+      table.className = "table table-bordered table-striped table-hover";
+
+      // Cabeçalho
+      const thead = document.createElement("thead");
+      thead.className = "table-dark";
+      const trHead = document.createElement("tr");
+      ["ID", "Nome", "Preço (R$)", "Ações"].forEach(text => {
+        const th = document.createElement("th");
+        th.textContent = text;
+        trHead.appendChild(th);
+      });
+      thead.appendChild(trHead);
+      table.appendChild(thead);
+
+      // Corpo da tabela
+      const tbody = document.createElement("tbody");
+      
+      produtos.forEach((produto) => {
+        const tr = document.createElement("tr");
+
+        // ID
+        const tdId = document.createElement("td");
+        tdId.textContent = produto.idProduto || 'N/A';
+        tr.appendChild(tdId);
+
+        // Nome
+        const tdNome = document.createElement("td");
+        tdNome.textContent = produto.nomeProduto || 'N/A';
+        tr.appendChild(tdNome);
+
+        // Preço
+        const tdPreco = document.createElement("td");
+        tdPreco.textContent = produto.precoProduto ? `R$ ${parseFloat(produto.precoProduto).toFixed(2)}` : 'N/A';
+        tr.appendChild(tdPreco);
+
+        // Ações
+        const tdAcoes = document.createElement("td");
+        tdAcoes.className = "table-actions";
+
+        const btnSel = createButton("Selecionar", "btn-sm btn-info", "fas fa-edit");
+        btnSel.onclick = function() {
+          console.log("🎯 Selecionando produto:", produto);
+          txtId.value = produto.idProduto;
+          txtNomeProduto.value = produto.nomeProduto;
+          txtPrecoProduto.value = produto.precoProduto;
+          showResponse("Produto selecionado. Agora você pode atualizar ou excluir.", "info");
+        };
+        tdAcoes.appendChild(btnSel);
+
+        tr.appendChild(tdAcoes);
+        tbody.appendChild(tr);
+      });
+
+      table.appendChild(tbody);
+      divTabela.appendChild(table);
+      
+      console.log("✅ Tabela de produtos renderizada com sucesso");
+      updateDebugInfo(`Produtos: ${produtos.length} (MOCK)`);
+    }
+
+    function validatePreco(preco) {
+      return !isNaN(parseFloat(preco)) && parseFloat(preco) > 0;
+    }
+
+    function showResponse(message, type) {
+      console.log(`💬 Mensagem: ${message} (${type})`);
+      if (message) {
+        divResposta.textContent = message;
+        divResposta.className = `alert alert-${type}`;
+        divResposta.classList.remove("d-none");
+        
+        if (type === "success") {
+          setTimeout(() => {
+            divResposta.classList.add("d-none");
+          }, 5000);
+        }
+      } else {
+        divResposta.className = "d-none";
+      }
+    }
+
+    function clearForm() {
+      txtId.value = "";
+      txtNomeProduto.value = "";
+      txtPrecoProduto.value = "";
+    }
+
+    function updateDebugInfo(message) {
+      debugInfo.innerHTML = message;
+    }
+
+    // ========== INICIALIZAÇÃO ==========
+    console.log("🚀 Inicializando página de Produtos com DADOS MOCKADOS...");
+    showResponse("Sistema funcionando com dados mockados. Todas as operações disponíveis!", "info");
+    updateDebugInfo("MOCK ATIVO - SEM ERROS");
+    
+    // Carrega os dados mockados automaticamente
+    document.addEventListener("DOMContentLoaded", function() {
+      console.log("📄 DOM carregado, iniciando com dados mockados...");
+      listAll();
+    });
+
+    // Adicionar listener para tecla Enter no campo ID
+    txtId.addEventListener("keypress", function(e) {
+      if (e.key === "Enter") {
+        btnBuscar.click();
+      }
+    });
+  </script>
+</body>
+</html>

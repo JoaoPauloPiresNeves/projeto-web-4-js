@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+  <meta charset="UTF-8" />
+  <title>CRUD Pedidos</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+  <style>
+    body {
+      padding: 2em;
+      background-color: #f8f9fa;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+    .card {
+      margin-bottom: 20px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+      border: none;
+      border-radius: 10px;
+    }
+    .card-header {
+      border-radius: 10px 10px 0 0 !important;
+    }
+    table {
+      margin-top: 1em;
+      width: 100%;
+    }
+    .btn {
+      margin-right: 5px;
+      margin-bottom: 5px;
+      border-radius: 6px;
+      font-weight: 500;
+    }
+    .action-buttons {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 15px;
+    }
+    .table-actions {
+      display: flex;
+      gap: 5px;
+    }
+    .form-control {
+      border-radius: 6px;
+      padding: 10px;
+    }
+    h1, h5 {
+      color: #2c3e50;
+    }
+    .alert {
+      border-radius: 8px;
+    }
+    .debug-panel {
+      position: fixed;
+      top: 10px;
+      right: 10px;
+      background: rgba(0,0,0,0.8);
+      color: white;
+      padding: 10px;
+      border-radius: 5px;
+      font-size: 12px;
+      z-index: 1000;
+      max-width: 300px;
+    }
+  </style>
+</head>
+
+<body class="container">
+  <!-- Painel de Debug -->
+  <div class="debug-panel">
+    <strong>Debug Pedidos:</strong><br>
+    <div id="debugInfo">Carregando...</div>
+  </div>
+
+  <div class="card">
+    <div class="card-header bg-warning text-dark">
+      <h1 class="mb-0"><i class="fas fa-shopping-cart me-2"></i>Gerenciamento de Pedidos</h1>
+    </div>
+    <div class="card-body">
+      <div class="row">
+        <div class="col-md-3">
+          <div class="mb-3">
+            <label for="txtId" class="form-label">ID do Pedido</label>
+            <input type="number" id="txtId" class="form-control mb-2" placeholder="ID do pedido" min="1" />
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="mb-3">
+            <label for="txtDataPedido" class="form-label">Data do Pedido</label>
+            <input type="date" id="txtDataPedido" class="form-control mb-2" />
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="mb-3">
+            <label for="txtClienteId" class="form-label">ID do Cliente</label>
+            <input type="number" id="txtClienteId" class="form-control mb-2" placeholder="ID cliente" min="1" />
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="mb-3">
+            <label for="txtProdutoId" class="form-label">ID do Produto</label>
+            <input type="number" id="txtProdutoId" class="form-control mb-2" placeholder="ID produto" min="1" />
+          </div>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="col-md-12">
+          <div class="mb-3">
+            <label class="form-label">Ações</label>
+            <div class="action-buttons" id="divBotoes"></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="divResposta" class="alert d-none"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header bg-light">
+      <h5 class="mb-0"><i class="fas fa-list me-2"></i>Lista de Pedidos</h5>
+    </div>
+    <div class="card-body">
+      <div id="divTabela" class="table-responsive">
+        <p class="text-center text-muted">Clique em "Listar Pedidos" para carregar os dados</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ========== SEÇÃO DE AUTENTICAÇÃO E TOKEN ==========
+    const token = localStorage.getItem("token");
+    const debugInfo = document.getElementById("debugInfo");
+    
+    if (!token) {
+      console.warn("❌ Token não encontrado. Redirecionando para login...");
+      alert("Sessão expirada. Faça login novamente.");
+      window.location.href = "Login.html";
+    }
+
+    // ========== VARIÁVEIS GLOBAIS E REFERÊNCIAS DOM ==========
+    let API_DATA;
+    const txtId = document.getElementById("txtId");
+    const txtDataPedido = document.getElementById("txtDataPedido");
+    const txtClienteId = document.getElementById("txtClienteId");
+    const txtProdutoId = document.getElementById("txtProdutoId");
+    const divBotoes = document.getElementById("divBotoes");
+    const divResposta = document.getElementById("divResposta");
+    const divTabela = document.getElementById("divTabela");
+
+    // ========== FUNÇÃO PARA FAZER REQUISIÇÕES ==========
+    async function makeRequest(url, method, data = null) {
+      console.log(`🔵 Fazendo requisição ${method} para: ${url}`);
+      if (data) console.log("📦 Dados enviados:", data);
+
+      const config = {
+        method: method,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      };
+
+      if (data) {
+        config.body = JSON.stringify(data);
+      }
+
+      try {
+        const response = await fetch(url, config);
+        const result = await response.json();
+        
+        console.log(`✅ Resposta ${response.status}:`, result);
+        
+        if (!response.ok) {
+          throw new Error(result.message || `Erro ${response.status}`);
+        }
+        
+        return result;
+      } catch (error) {
+        console.error(`❌ Erro na requisição ${method}:`, error);
+        throw error;
+      }
+    }
+
+    // ========== CRIAÇÃO DE BOTÕES ==========
+    function createButton(text, className, icon = "") {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.innerHTML = icon ? `<i class="${icon} me-1"></i> ${text}` : text;
+      btn.className = `btn ${className}`;
+      return btn;
+    }
+
+    // Botão Buscar por ID
+    const btnBuscar = createButton("Buscar por ID", "btn-info", "fas fa-search");
+    btnBuscar.onclick = async function() {
+      const id = txtId.value.trim();
+      if (!id) {
+        showResponse("Digite um ID para buscar", "warning");
+        return;
+      }
+
+      try {
+        showResponse("Buscando pedido...", "info");
+        const resposta = await makeRequest(`http://localhost:8080/api/v1/pedidos/${id}`, "GET");
+        
+        if (resposta && resposta.success) {
+          showResponse("Pedido encontrado com sucesso", "success");
+          renderSinglePedido(resposta);
+        } else {
+          showResponse("Pedido não encontrado", "warning");
+          clearForm();
+        }
+      } catch (error) {
+        console.error("Erro ao buscar pedido:", error);
+        if (error.message.includes("Token") || error.message.includes("401")) {
+          handleTokenError();
+        } else {
+          showResponse("Erro ao buscar pedido: " + error.message, "danger");
+        }
+      }
+    };
+    divBotoes.appendChild(btnBuscar);
+
+    // Botão Listar
+    const btnListar = createButton("Listar Pedidos", "btn-primary", "fas fa-list");
+    btnListar.onclick = async function() {
+      await listAll();
+    };
+    divBotoes.appendChild(btnListar);
+
+    // Botão Criar
+    const btnCriar = createButton("Criar Pedido", "btn-success", "fas fa-plus");
+    btnCriar.onclick = async function() {
+      const data = txtDataPedido.value.trim();
+      const clienteId = txtClienteId.value.trim();
+      const produtoId = txtProdutoId.value.trim();
+
+      if (!data || !clienteId || !produtoId) {
+        showResponse("Todos os campos são obrigatórios", "warning");
+        return;
+      }
+
+      // SUA ESTRUTURA DE DADOS
+      const pedidoData = {
+        pedido: {
+          dataPedido: data,
+          clienteIdCliente: parseInt(clienteId),
+          produtoIdProduto: parseInt(produtoId)
+        }
+      };
+
+      try {
+        showResponse("Criando pedido...", "info");
+        const resposta = await makeRequest("http://localhost:8080/api/v1/pedidos", "POST", pedidoData);
+        showResponse("Pedido criado com sucesso! ID: " + resposta.data, "success");
+        await listAll();
+        clearForm();
+      } catch (error) {
+        console.error("Erro ao criar pedido:", error);
+        if (error.message.includes("Token") || error.message.includes("401")) {
+          handleTokenError();
+        } else {
+          showResponse("Erro ao criar pedido: " + error.message, "danger");
+        }
+      }
+    };
+    divBotoes.appendChild(btnCriar);
+
+    // Botão Atualizar
+    const btnAtualizar = createButton("Atualizar Pedido", "btn-warning", "fas fa-edit");
+    btnAtualizar.onclick = async function() {
+      const id = txtId.value.trim();
+      const data = txtDataPedido.value.trim();
+      const clienteId = txtClienteId.value.trim();
+      const produtoId = txtProdutoId.value.trim();
+      
+      if (!id) {
+        showResponse("Digite um ID para atualizar", "warning");
+        return;
+      }
+
+      if (!data || !clienteId || !produtoId) {
+        showResponse("Todos os campos são obrigatórios", "warning");
+        return;
+      }
+
+      // SUA ESTRUTURA DE DADOS
+      const pedidoData = {
+        pedido: {
+          idPedido: parseInt(id),
+          dataPedido: data,
+          clienteIdCliente: parseInt(clienteId),
+          produtoIdProduto: parseInt(produtoId)
+        }
+      };
+      
+      try {
+        showResponse("Atualizando pedido...", "info");
+        const resposta = await makeRequest(`http://localhost:8080/api/v1/pedidos/${id}`, "PUT", pedidoData);
+        showResponse("Pedido atualizado com sucesso!", "success");
+        await listAll();
+      } catch (error) {
+        console.error("Erro ao atualizar pedido:", error);
+        if (error.message.includes("Token") || error.message.includes("401")) {
+          handleTokenError();
+        } else {
+          showResponse("Erro ao atualizar pedido: " + error.message, "danger");
+        }
+      }
+    };
+    divBotoes.appendChild(btnAtualizar);
+
+    // Botão Excluir
+    const btnExcluir = createButton("Excluir Pedido", "btn-danger", "fas fa-trash");
+    btnExcluir.onclick = async function() {
+      const id = txtId.value.trim();
+      if (!id) {
+        showResponse("Digite um ID para excluir", "warning");
+        return;
+      }
+
+      if (confirm(`Tem certeza que deseja excluir o pedido com ID ${id}?`)) {
+        try {
+          showResponse("Excluindo pedido...", "info");
+          const resposta = await makeRequest(`http://localhost:8080/api/v1/pedidos/${id}`, "DELETE");
+          showResponse("Pedido excluído com sucesso!", "success");
+          await listAll();
+          clearForm();
+        } catch (error) {
+          console.error("Erro ao excluir pedido:", error);
+          if (error.message.includes("Token") || error.message.includes("401")) {
+            handleTokenError();
+          } else {
+            showResponse("Erro ao excluir pedido: " + error.message, "danger");
+          }
+        }
+      }
+    };
+    divBotoes.appendChild(btnExcluir);
+
+    // Botão Limpar
+    const btnLimpar = createButton("Limpar Campos", "btn-secondary", "fas fa-broom");
+    btnLimpar.onclick = function() {
+      clearForm();
+      showResponse("Campos limpos", "info");
+    };
+    divBotoes.appendChild(btnLimpar);
+
+    // ========== FUNÇÕES PRINCIPAIS ==========
+    async function listAll() {
+      try {
+        console.log("🟡 Iniciando listAll() pedidos...");
+        showResponse("Carregando pedidos...", "info");
+        
+        const resposta = await makeRequest("http://localhost:8080/api/v1/pedidos", "GET");
+        
+        console.log("📊 Resposta completa da API:", resposta);
+        
+        if (resposta && resposta.success) {
+          console.log("✅ Sucesso ao carregar pedidos");
+          console.log("📋 Estrutura dos dados:", resposta.data);
+          renderTable(resposta);
+          showResponse("Pedidos carregados com sucesso", "success");
+        } else {
+          console.warn("⚠️ Resposta sem sucesso:", resposta);
+          showResponse("Erro ao carregar pedidos", "danger");
+        }
+      } catch (error) {
+        console.error("❌ Erro ao carregar pedidos:", error);
+        if (error.message.includes("Token") || error.message.includes("401")) {
+          handleTokenError();
+        } else {
+          showResponse("Erro ao carregar pedidos: " + error.message, "danger");
+        }
+      }
+    }
+
+    function renderSinglePedido(dados) {
+      console.log("🟡 Renderizando pedido único:", dados);
+      divTabela.innerHTML = "";
+
+      if (!dados || !dados.data) {
+        console.warn("⚠️ Dados inválidos para renderização única");
+        divTabela.innerHTML = '<div class="alert alert-info">Pedido não encontrado</div>';
+        return;
+      }
+
+      // CORREÇÃO: Verificar diferentes estruturas possíveis para pedido único
+      let pedido = null;
+      
+      // Estrutura 1: dados.data.pedidos (array)
+      if (dados.data.pedidos && Array.isArray(dados.data.pedidos) && dados.data.pedidos.length > 0) {
+        pedido = dados.data.pedidos[0];
+        console.log("✅ Pedido encontrado em data.pedidos[0]:", pedido);
+      }
+      // Estrutura 2: dados.data.pedidos (objeto direto)
+      else if (dados.data.pedidos && typeof dados.data.pedidos === 'object') {
+        pedido = dados.data.pedidos;
+        console.log("✅ Pedido encontrado em data.pedidos:", pedido);
+      }
+      // Estrutura 3: dados.data (é o próprio pedido)
+      else if (dados.data.idPedido || dados.data.idpedidos || dados.data.id) {
+        pedido = dados.data;
+        console.log("✅ Pedido encontrado em data:", pedido);
+      }
+      // Estrutura 4: dados é o próprio pedido
+      else if (dados.idPedido || dados.idpedidos || dados.id) {
+        pedido = dados;
+        console.log("✅ Pedido encontrado em dados:", pedido);
+      }
+      else {
+        console.warn("⚠️ Estrutura de pedido único não reconhecida:", dados);
+        divTabela.innerHTML = '<div class="alert alert-warning">Estrutura de dados não reconhecida</div>';
+        return;
+      }
+
+      if (!pedido) {
+        console.log("ℹ️ Pedido não encontrado na busca");
+        divTabela.innerHTML = '<div class="alert alert-info">Pedido não encontrado</div>';
+        return;
+      }
+
+      console.log("🛒 Pedido a ser renderizado:", pedido);
+      renderPedidoTable([pedido]);
+    }
+
+    function renderTable(dados) {
+      console.log("🟡 Iniciando renderTable() pedidos...");
+      console.log("📦 Dados recebidos:", dados);
+      
+      divTabela.innerHTML = "";
+
+      // Verificar diferentes estruturas possíveis
+      let pedidos = [];
+      
+      if (dados && dados.data && dados.data.pedidos) {
+        pedidos = dados.data.pedidos;
+        console.log("✅ Pedidos encontrados na estrutura data.pedidos:", pedidos);
+      } else if (dados && dados.pedidos) {
+        pedidos = dados.pedidos;
+        console.log("✅ Pedidos encontrados na estrutura pedidos:", pedidos);
+      } else if (dados && Array.isArray(dados)) {
+        pedidos = dados;
+        console.log("✅ Pedidos encontrados como array direto:", pedidos);
+      } else {
+        console.warn("⚠️ Estrutura de dados não reconhecida:", dados);
+        divTabela.innerHTML = '<div class="alert alert-warning">Estrutura de dados não reconhecida</div>';
+        return;
+      }
+
+      if (!pedidos || pedidos.length === 0) {
+        console.log("ℹ️ Nenhum pedido encontrado");
+        divTabela.innerHTML = '<div class="alert alert-info">Nenhum pedido encontrado</div>';
+        return;
+      }
+
+      console.log(`🎯 Renderizando ${pedidos.length} pedido(s)`);
+      renderPedidoTable(pedidos);
+    }
+
+    function renderPedidoTable(pedidos) {
+      console.log("🟡 Criando tabela para pedidos:", pedidos);
+      
+      const table = document.createElement("table");
+      table.className = "table table-bordered table-striped table-hover";
+
+      // Cabeçalho
+      const thead = document.createElement("thead");
+      thead.className = "table-dark";
+      const trHead = document.createElement("tr");
+      ["ID Pedido", "Data", "Cliente", "Produto", "Ações"].forEach(text => {
+        const th = document.createElement("th");
+        th.textContent = text;
+        trHead.appendChild(th);
+      });
+      thead.appendChild(trHead);
+      table.appendChild(thead);
+
+      // Corpo da tabela
+      const tbody = document.createElement("tbody");
+      
+      pedidos.forEach((pedido, index) => {
+        console.log(`📝 Processando pedido ${index + 1}:`, pedido);
+        
+        const tr = document.createElement("tr");
+
+        // ID - tentar diferentes propriedades
+        const tdId = document.createElement("td");
+        const id = pedido.idPedido || pedido.idpedidos || pedido.id;
+        tdId.textContent = id || 'N/A';
+        console.log(`  ID: ${id}`);
+        tr.appendChild(tdId);
+
+        // Data - tentar diferentes propriedades
+        const tdData = document.createElement("td");
+        const data = pedido.dataPedido || pedido.data_pedido || pedido.data;
+        tdData.textContent = data ? new Date(data).toLocaleDateString('pt-BR') : 'N/A';
+        console.log(`  Data: ${data}`);
+        tr.appendChild(tdData);
+
+        // Cliente - tentar diferentes propriedades
+        const tdCliente = document.createElement("td");
+        const clienteId = pedido.clienteIdCliente || pedido.clientes_idclientes;
+        let clienteNome = 'N/A';
+        
+        // Verificar se tem informações do cliente
+        if (pedido.cliente) {
+          clienteNome = pedido.cliente.nomeCliente || pedido.cliente.nome_cliente || pedido.cliente.nome;
+        }
+        
+        if (clienteNome && clienteNome !== 'N/A') {
+          tdCliente.textContent = `${clienteNome}`;
+        } else {
+          tdCliente.textContent = `Cliente ID: ${clienteId || 'N/A'}`;
+        }
+        console.log(`  Cliente: ${clienteNome}, ID: ${clienteId}`);
+        tr.appendChild(tdCliente);
+
+        // Produto - tentar diferentes propriedades
+        const tdProduto = document.createElement("td");
+        const produtoId = pedido.produtoIdProduto || pedido.produtos_idprodutos;
+        let produtoNome = 'N/A';
+        let produtoPreco = null;
+        
+        // Verificar se tem informações do produto
+        if (pedido.produto) {
+          produtoNome = pedido.produto.nomeProduto || pedido.produto.nome_produto || pedido.produto.nome;
+          produtoPreco = pedido.produto.precoProduto || pedido.produto.preco_produto || pedido.produto.preco;
+        }
+        
+        if (produtoNome && produtoNome !== 'N/A') {
+          if (produtoPreco) {
+            tdProduto.textContent = `${produtoNome} - R$ ${parseFloat(produtoPreco).toFixed(2)}`;
+          } else {
+            tdProduto.textContent = `${produtoNome} (ID: ${produtoId})`;
+          }
+        } else {
+          tdProduto.textContent = `Produto ID: ${produtoId || 'N/A'}`;
+        }
+        console.log(`  Produto: ${produtoNome}, ID: ${produtoId}, Preço: ${produtoPreco}`);
+        tr.appendChild(tdProduto);
+
+        // Ações
+        const tdAcoes = document.createElement("td");
+        tdAcoes.className = "table-actions";
+
+        const btnSel = createButton("Selecionar", "btn-sm btn-info", "fas fa-edit");
+        btnSel.onclick = function() {
+          console.log("🎯 Selecionando pedido:", pedido);
+          txtId.value = id;
+          txtDataPedido.value = data;
+          txtClienteId.value = clienteId;
+          txtProdutoId.value = produtoId;
+          showResponse("Pedido selecionado. Agora você pode atualizar ou excluir.", "info");
+        };
+        tdAcoes.appendChild(btnSel);
+
+        tr.appendChild(tdAcoes);
+        tbody.appendChild(tr);
+      });
+
+      table.appendChild(tbody);
+      divTabela.appendChild(table);
+      
+      console.log("✅ Tabela de pedidos renderizada com sucesso");
+      updateDebugInfo(`Pedidos: ${pedidos.length}`);
+    }
+
+    function showResponse(message, type) {
+      console.log(`💬 Mensagem: ${message} (${type})`);
+      if (message) {
+        divResposta.textContent = message;
+        divResposta.className = `alert alert-${type}`;
+        divResposta.classList.remove("d-none");
+        
+        if (type === "success") {
+          setTimeout(() => {
+            divResposta.classList.add("d-none");
+          }, 5000);
+        }
+      } else {
+        divResposta.className = "d-none";
+      }
+    }
+
+    function clearForm() {
+      txtId.value = "";
+      txtDataPedido.value = "";
+      txtClienteId.value = "";
+      txtProdutoId.value = "";
+    }
+
+    function handleTokenError() {
+      console.error("❌ Erro de autenticação. Limpando dados e redirecionando...");
+      localStorage.removeItem("token");
+      localStorage.removeItem("userData");
+      alert("Sessão expirada. Faça login novamente.");
+      window.location.href = "Login.html";
+    }
+
+    function updateDebugInfo(message) {
+      debugInfo.innerHTML = message;
+    }
+
+    // ========== INICIALIZAÇÃO ==========
+    console.log("🚀 Inicializando página de Pedidos...");
+    showResponse("Digite um ID para buscar ou preencha os campos para criar um novo pedido", "info");
+    updateDebugInfo("Pronto para usar");
+    
+    document.addEventListener("DOMContentLoaded", function() {
+      console.log("📄 DOM carregado, iniciando listAll() pedidos...");
+      listAll();
+    });
+
+    // Adicionar listener para tecla Enter no campo ID
+    txtId.addEventListener("keypress", function(e) {
+      if (e.key === "Enter") {
+        btnBuscar.click();
+      }
+    });
+  </script>
+</body>
+</html>
